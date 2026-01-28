@@ -2,58 +2,49 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# הגדרות דף בסיסיות למראה נקי
-st.set_page_config(page_title="EduCheck AI - עברית/אנגלית", layout="centered")
+# הגדרות דף ועיצוב RTL לעברית
+st.set_page_config(page_title="EduCheck AI - Personalized", layout="wide")
+st.markdown("""<style>body { direction: rtl; text-align: right; }</style>""", unsafe_allow_index=True)
 
-# עיצוב מותאם לעברית (יישור לימין)
-st.markdown("""
-    <style>
-    .reportview-container { direction: rtl; }
-    .stTextArea, .stTextInput { direction: rtl; }
-    </style>
-    """, unsafe_allow_index=True)
+st.title("📝 EduCheck AI: למידת כתב יד אישי")
 
-st.title("📝 EduCheck AI v2")
-st.subheader("מערכת חכמה לבדיקת מבחנים בכתב יד")
-
-# חיבור למפתח ה-API
+# חיבור API
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
-    st.error("חסר מפתח API בהגדרות!")
+    st.error("נא להגדיר מפתח API ב-Secrets")
 
-# הגדרת המודל עם "הוראות מערכת" לזיהוי כתב יד ועברית
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", # המודל הכי מהיר
-    system_instruction="אתה עוזר הוראה מומחה. תפקידך לפענח כתב יד בעברית ובאנגלית. עליך לענות תמיד בעברית רהוטה, אלא אם התבקשת אחרת. שים לב לפרטים הקטנים בכתב היד והשווה אותם למחוון בצורה מדויקת."
-)
+# סרגל צד ל"לימוד המערכת"
+st.sidebar.header("🎓 לימוד המערכת (אופציונלי)")
+st.sidebar.write("העלה דוגמה לכתב יד כדי שה-AI יבין אותו טוב יותר")
+example_img = st.sidebar.file_uploader("צילום אות/מילה לדוגמה:", type=['png', 'jpg', 'jpeg'], key="example")
+example_text = st.sidebar.text_input("מה כתוב בדוגמה?", placeholder="למשל: האות א'")
 
-# ממשק המשתמש
-rubric = st.text_area("הכנס את המחוון (התשובה הנכונה):", placeholder="כתוב כאן מה התלמיד היה אמור לענות...")
-uploaded_file = st.file_uploader("העלה צילום של המבחן (כתב יד):", type=['png', 'jpg', 'jpeg'])
+# מסך ראשי
+col1, col2 = st.columns(2)
 
-if st.button("בצע בדיקה מהירה ⚡"):
-    if uploaded_file and rubric:
-        with st.spinner('מנתח כתב יד ומחשב ציון...'):
+with col1:
+    rubric = st.text_area("הכנס מחוון (בעברית או אנגלית):")
+    test_img = st.file_uploader("העלה את צילום המבחן המלא:", type=['png', 'jpg', 'jpeg'], key="test")
+
+if st.button("בדוק מבחן ⚡"):
+    if test_img and rubric:
+        with st.spinner('מנתח...'):
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # בניית הפקודה (Prompt) עם למידה מהדוגמה
+            prompt = [f"אתה מורה מקצועי. השווה את המבחן למחוון: {rubric}. ענה בעברית."]
+            
+            if example_img and example_text:
+                prompt.append(f"לצורך זיהוי כתב היד, הנה דוגמה: בתמונה הזו כתוב '{example_text}'")
+                prompt.append(Image.open(example_img))
+            
+            prompt.append("הנה המבחן המלא לבדיקה:")
+            prompt.append(Image.open(test_img))
+            
             try:
-                img = Image.open(uploaded_file)
-                
-                # הנחיה ספציפית לזיהוי כתב יד ישראלי
-                prompt = f"""
-                נתח את התמונה המצורפת של כתב היד. 
-                1. פענח את הטקסט הכתוב (עברית/אנגלית).
-                2. השווה אותו למחוון הבא: {rubric}
-                3. תן ציון מ-0 עד 100.
-                4. הסבר בקצרה למה זה הציון.
-                ענה בפורמט ברור בעברית.
-                """
-                
-                response = model.generate_content([prompt, img])
-                
+                response = model.generate_content(prompt)
                 st.success("הבדיקה הושלמה!")
-                st.markdown("---")
-                st.markdown(response.text)
+                st.write(response.text)
             except Exception as e:
-                st.error(f"קרתה שגיאה: {e}")
-    else:
-        st.warning("נא להעלות תמונה ולהזין מחוון.")
+                st.error(f"שגיאה בבדיקה: {e}")
